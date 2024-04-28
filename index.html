@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reddit Web Crawler</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 20px;
+                background-color: #ffffff;
+                color: #121212;
+            }
+    
+            h1 {
+                text-align: center;
+                color: #ff0000;
+            }
+    
+            form {
+                max-width: 600px;
+                margin: 20px auto;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #fff;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+    
+            label {
+                display: block;
+                margin-bottom: 8px;
+                color: #555;
+            }
+    
+            input,
+            select,
+            textarea {
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 15px;
+                box-sizing: border-box;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                transition: border-color 0.3s;
+            }
+    
+            input:focus,
+            select:focus,
+            textarea:focus {
+                border-color: #4CAF50;
+            }
+    
+            button {
+                background-color: #ff0000;
+                color: rgb(204, 255, 0);
+                padding: 10px 15px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background-color 0.3s;
+            }
+    
+            button:hover {
+                background-color: #45a049;
+            }
+    
+            .output-container {
+                margin-top: 20px;
+            }
+    
+            h2 {
+                color: #ff0000;
+            }
+    
+            .pagination {
+                display: flex;
+                justify-content: center;
+                margin-top: 20px;
+            }
+    
+            .pagination a {
+                color: #333;
+                padding: 5px 10px;
+                margin: 0 5px;
+                text-decoration: none;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                transition: background-color 0.3s;
+            }
+    
+            .pagination a:hover {
+                background-color: #ddd;
+            }
+    
+            .loading-spinner {
+                border: 4px solid rgba(0, 0, 0, 0.1);
+                border-top: 4px solid #3498db;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                animation: spin 1s linear infinite;
+                display: inline-block;
+                margin-right: 5px;
+            }
+    
+            .loading-message {
+                margin-top: 10px;
+                color: #555;
+            }
+
+            #dark-mode-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        body.dark-mode {
+   
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+    
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+        #subreddit {
+            height: 200px; 
+            width: 100%; 
+            padding: 5px; 
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow-y: auto; 
+}
+        </style>
+</head>
+<body>
+    <h1>Reddit Crawler</h1>
+    <button id="dark-mode-toggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
+    <form method="post" action="/">      
+        <label for="subreddit">Select Subreddit(s):</label>
+        <select id="subreddit" name="subreddit" multiple size="10">
+            <option value="cybersecurity">Cybersecurity</option>
+            <option value="ethicalhacking">Ethical Hacking</option>
+            <option value="malware">Malware</option>
+            <option value="threatintel">Threat Intel</option>
+            <option value="blueteamsec">Blue Team Security</option>
+            <option value= "netsec">Nework Security</option>
+            <option value="AskNetsec">Ask Network Security</option>
+            <option value= "computerforensics">Computer Forensics</option>
+            <option value="homelab">Home Lab</option>
+            <option value= "privacy">Privacy</option>
+            <option value= "crypto">Crypto</option>
+            <option value= "socialengineering">Social Engineering</option>
+            <option value= "hacking">Hacking</option>
+            <option value= "sysadmin">System Admin</option>
+            <option value="networking">Networking</option>
+            <option value="information_security">Information Security</option>
+            <option value="MalwareAnalysis">Malware Analysis</option>
+            <option value="bugbounty">Bug Bounty</option>
+            <option value="ReverseEngineering">Reverse Engineering</option>
+            <option value="passwords">Passwords</option>
+            <option value="WebSec">Web Security</option>
+            <option value="osint">Open Source Intelligence(OSINT)</option>
+            <option value="OPSEC">OPSEC</option>
+            <option value="SecurityCTF">Security CTF</option>
+            <option value="privacytoolsIO">Privacy Tools</option>
+            <option value="hardwarehacking">Hardware Hacking</option>
+            <option value="Malwarebytes">Malware Bytes</option>
+            <option value="antivirus">Anti Virus</option>
+                </select>
+
+        
+       <!-- Update the filter_term input to accept multiple values -->
+            <label for="filter_term">Filter Term(s):</label>
+            <input type="text" id="filter_term" name="filter" placeholder="Enter filter terms (comma-separated)">
+
+        
+
+        <label for="time_range">Time Range:</label>
+        <select id="time_range" name="time_range">
+            <option value="">All Time</option>
+            <option value="hour">Past Hour</option>
+            <option value="day">Past Day</option>
+            <option value="week">Past Week</option>
+            <option value="month">Past Month</option>
+            <option value="year">Past Year</option>
+        </select>
+        <label for="sort_method">Sort By:</label>
+<select id="sort_method" name="sort_method">
+    <option value="comments">Relevance</option>
+    <option value="comments">Number of Comments</option>
+    <option value="score">Score</option>
+    <option value="date">Date Posted</option>
+</select>
+
+        
+        <button type="submit" name="action" value="run_script" onclick="showLoading()">Start Crawling</button>
+</form>
+<div class="output-container">
+    <h2>Output:</h2>
+    <div id="loading-section" style="display: none;">
+        <div class="loading-spinner"></div>
+        <span class="loading-message">Running script. Please wait...</span>
+    </div>
+    {% if POSTS_PER_PAGE is defined %}
+    {% for entry in output_list %}
+        {{ entry }}<br>
+    {% endfor %}
+
+    {% if output_list|length > POSTS_PER_PAGE %}
+        <div class="pagination">
+            <span>Page {{ page }}:</span>
+            {% for p in range(1, (output_list|length // POSTS_PER_PAGE) + 1) %}
+                <a href="?page={{ p }}&subreddit={{ selected_subreddit }}&sort_method={{ sort_method }}&search_term={{ search_term }}&post_type={{ post_type }}&time_range={{ time_range }}">{{ p }}</a>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endif %}
+</div>
+
+<form method="post" action="/">
+    <label for="feedback">Submit Feedback:</label>
+    <textarea id="feedback" name="feedback" rows="4" cols="50" placeholder="Enter your feedback here"></textarea>
+    <button type="submit" name="action" value="submit_feedback">Submit Feedback</button>
+</form>
+
+
+    <script>
+        function showLoading() {
+            document.getElementById("loading-section").style.display = "block";
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const body = document.body;
+
+    // Check if user preference for dark mode is stored in local storage
+    const isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+
+    // Set initial dark mode state based on user preference
+    if (isDarkMode) {
+        enableDarkMode();
+    }
+
+    // Function to enable dark mode
+    function enableDarkMode() {
+        body.classList.add('dark-mode');
+        localStorage.setItem('darkMode', 'enabled');
+    }
+
+    // Function to disable dark mode
+    function disableDarkMode() {
+        body.classList.remove('dark-mode');
+        localStorage.setItem('darkMode', null);
+    }
+
+    // Function to toggle dark mode
+    window.toggleDarkMode = function () {
+        if (body.classList.contains('dark-mode')) {
+            disableDarkMode();
+        } else {
+            enableDarkMode();
+        }
+    };
+});
+    </script>
+      <script src="{{ url_for('static', filename='dark_mode.js') }}"></script>
+      <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</body>
+</html>

@@ -1,0 +1,484 @@
+1.save code into same folder (do not click on index without launching app)
+2.open command prompt 
+3.in command prompt open the app.py using (python app.py) - must be in directory
+4. the server should now be running and open local host in browser (http://127.0.0.1:5000)
+
+PYTHON CODE:
+from flask import Flask, render_template, request, session
+import re
+import praw
+from prawcore.exceptions import NotFound
+import datetime
+from datetime import timezone
+import time 
+import praw.exceptions
+
+app = Flask(__name__)
+app.secret_key = 'jo7UwNUXScIX-359RHSUAZWSmoEK8g'
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_KEY_PREFIX'] = 'Cyber App'
+my_user = "Designer_Goose3398"
+my_pass = "ElephantFloor44"
+my_useragent = "MyClient/0.1 by MyName"
+client_id = 'JNuwcf0O2kjif9Llc9lXaA'
+client_secret = 'jo7UwNUXScIX-359RHSUAZWSmoEK8g'
+reddit = None
+LIMIT = 999999
+CROP = 999999
+output_list = []
+POSTS_PER_PAGE = 9999999
+
+my_subreddits = [
+    "cybersecurity", "ethicalhacking", "malware", "threatintel", "blueteamsec",
+    "netsec", "AskNetsec", "computerforensics", "homelab", "privacy",
+    "crypto", "SocialEngineering", "hacking", "sysadmin", "networking", 
+    "information_Security","MalwareAnalysis", "bugbounty", "ReverseEngineering",
+    "Passwords","websec", "osint", "OPSEC", "SecurityCTF", "privacytoolsIO",
+    "hardwarehacking", "Malwarebytes", "antivirus",     
+]
+
+def process_feedback(feedback):
+    print("Received Feedback:", feedback)
+
+def authenticate_reddit():
+    global reddit
+    reddit = praw.Reddit(
+        client_id=client_id,
+        client_secret=client_secret,
+        password=my_pass,
+        user_agent=my_useragent,
+        username=my_user,
+        check_for_async=False
+    )
+   
+def check_submission_time(submission, time_range):
+    current_time = datetime.datetime.now(timezone.utc)
+    submission_time = datetime.datetime.fromtimestamp(submission.created_utc, timezone.utc)
+    
+    if time_range == 'hour':
+        return current_time - submission_time <= datetime.timedelta(hours=1)
+    elif time_range == 'day':
+        return current_time - submission_time <= datetime.timedelta(days=1)
+    elif time_range == 'week':
+        return current_time - submission_time <= datetime.timedelta(weeks=1)
+    elif time_range == 'month':
+        return current_time - submission_time <= datetime.timedelta(days=30)
+    elif time_range == 'year':
+        return current_time - submission_time <= datetime.timedelta(days=365)
+    else:
+        return True 
+
+def process_submission(i, submission):
+    if not hasattr(submission.author, 'name') or submission.stickied:
+     
+        return ""
+
+    entry = f"\n\nProcessing submission [{submission.permalink}]"
+    entry += f"\n---\nRedditor: {submission.author.name if hasattr(submission.author, 'name') else ''}"
+    entry += f"\nSubmission: {str(i)}: {submission.title}, " \
+             f"score: {str(submission.score)}, " \
+             f"upvote_ratio: {str(submission.upvote_ratio)}, " \
+             f"num comments: {str(submission.num_comments)}"
+
+    return entry
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    selected_subreddits = request.form.getlist('subreddit')
+    filter_term_str = request.form.get('filter', '')
+    filter_terms = [term.strip() for term in filter_term_str.split(',') if term.strip()]
+
+    action = None
+
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+
+        if action == 'run_script':
+            sort_method = request.form.get('sort_method', '')  
+            session['sort_method'] = sort_method  
+            session['selected_subreddits'] = selected_subreddits
+
+        elif action == 'submit_feedback':
+            feedback = request.form.get('feedback', '') 
+            process_feedback(feedback)  
+            return render_template('index.html', output_list=output_list)
+
+        session['output_list'] = []
+        time_range = request.form.get('time_range', '')  
+
+        
+        run_script(selected_subreddits, filter_terms, time_range, session.get('sort_method', ''))
+        print("Session Output List:", session['output_list'])
+
+    elif action == 'apply_filter':
+        apply_filter(filter_terms)  
+
+    page = int(request.args.get('page', 1))
+    start = (page - 1) * POSTS_PER_PAGE
+    end = start + POSTS_PER_PAGE
+
+    return render_template(
+        'index.html',
+        selected_subreddits=selected_subreddits,
+        output_list=session.get('output_list', [])[start:end],
+        page=page,
+        POSTS_PER_PAGE=POSTS_PER_PAGE
+    )
+
+
+
+
+def apply_filter(filter_terms):
+    print(f"Applying filter: {filter_terms}")
+    session['filter_terms'] = filter_terms
+    session['output_list'] = []  
+
+def run_script(selected_subreddits, filter_terms, time_range, sort_method):
+    global reddit
+    global output_list
+
+    if reddit is None:
+        authenticate_reddit()
+
+    output_list = [] 
+
+    try:
+        for selected_subreddit in selected_subreddits:
+            p = 0
+
+            subreddit = reddit.subreddit(selected_subreddit)
+            i = 0
+
+            output_list.append(f"\n\nSubreddit: {selected_subreddit}")
+
+            submissions = subreddit.hot(limit=LIMIT)
+
+           
+            if sort_method == 'comments':
+                submissions = sorted(submissions, key=lambda x: x.num_comments, reverse=True)
+            elif sort_method == 'score':
+                submissions = sorted(submissions, key=lambda x: x.score, reverse=True)
+            elif sort_method == 'date':
+                submissions = sorted(submissions, key=lambda x: x.created_utc, reverse=True)
+
+            for submission in submissions:
+                p = p + 1
+                entry = f"[{p}] "
+                if (
+                    hasattr(submission.author, 'name') and
+                    not submission.stickied and
+                    (not filter_terms or any(re.search(filter_term, submission.title) for filter_term in filter_terms))
+                    and
+                    (not time_range or check_submission_time(submission, time_range))
+                ):
+                    i = i + 1
+                    entry += process_submission(i, submission)
+                    output_list.append(entry)  
+
+                    if i == CROP:
+                        break
+
+            time.sleep(2)  
+
+        output_list.append("\nScript completed.")
+        output_list.append("\n")
+        output_list.append("\n")
+    except praw.exceptions.RedditAPIException as e:
+        output_list.append(f"Reddit API Exception occurred: {str(e)}")
+    except Exception as e:
+        output_list.append(f"Error occurred: {str(e)}")
+
+    print("Output List:", output_list)
+
+    return output_list
+
+
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+HTML CODE:
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reddit Web Crawler</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 20px;
+                background-color: #ffffff;
+                color: #121212;
+            }
+    
+            h1 {
+                text-align: center;
+                color: #ff0000;
+            }
+    
+            form {
+                max-width: 600px;
+                margin: 20px auto;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #fff;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+    
+            label {
+                display: block;
+                margin-bottom: 8px;
+                color: #555;
+            }
+    
+            input,
+            select,
+            textarea {
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 15px;
+                box-sizing: border-box;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                transition: border-color 0.3s;
+            }
+    
+            input:focus,
+            select:focus,
+            textarea:focus {
+                border-color: #4CAF50;
+            }
+    
+            button {
+                background-color: #ff0000;
+                color: rgb(204, 255, 0);
+                padding: 10px 15px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background-color 0.3s;
+            }
+    
+            button:hover {
+                background-color: #45a049;
+            }
+    
+            .output-container {
+                margin-top: 20px;
+            }
+    
+            h2 {
+                color: #ff0000;
+            }
+    
+            .pagination {
+                display: flex;
+                justify-content: center;
+                margin-top: 20px;
+            }
+    
+            .pagination a {
+                color: #333;
+                padding: 5px 10px;
+                margin: 0 5px;
+                text-decoration: none;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                transition: background-color 0.3s;
+            }
+    
+            .pagination a:hover {
+                background-color: #ddd;
+            }
+    
+            .loading-spinner {
+                border: 4px solid rgba(0, 0, 0, 0.1);
+                border-top: 4px solid #3498db;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                animation: spin 1s linear infinite;
+                display: inline-block;
+                margin-right: 5px;
+            }
+    
+            .loading-message {
+                margin-top: 10px;
+                color: #555;
+            }
+
+            #dark-mode-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        body.dark-mode {
+   
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+    
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+        #subreddit {
+            height: 200px; 
+            width: 100%; 
+            padding: 5px; 
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow-y: auto; 
+}
+        </style>
+</head>
+<body>
+    <h1>Reddit Crawler</h1>
+    <button id="dark-mode-toggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
+    <form method="post" action="/">      
+        <label for="subreddit">Select Subreddit(s):</label>
+        <select id="subreddit" name="subreddit" multiple size="10">
+            <option value="cybersecurity">Cybersecurity</option>
+            <option value="ethicalhacking">Ethical Hacking</option>
+            <option value="malware">Malware</option>
+            <option value="threatintel">Threat Intel</option>
+            <option value="blueteamsec">Blue Team Security</option>
+            <option value= "netsec">Nework Security</option>
+            <option value="AskNetsec">Ask Network Security</option>
+            <option value= "computerforensics">Computer Forensics</option>
+            <option value="homelab">Home Lab</option>
+            <option value= "privacy">Privacy</option>
+            <option value= "crypto">Crypto</option>
+            <option value= "socialengineering">Social Engineering</option>
+            <option value= "hacking">Hacking</option>
+            <option value= "sysadmin">System Admin</option>
+            <option value="networking">Networking</option>
+            <option value="information_security">Information Security</option>
+            <option value="MalwareAnalysis">Malware Analysis</option>
+            <option value="bugbounty">Bug Bounty</option>
+            <option value="ReverseEngineering">Reverse Engineering</option>
+            <option value="passwords">Passwords</option>
+            <option value="WebSec">Web Security</option>
+            <option value="osint">Open Source Intelligence(OSINT)</option>
+            <option value="OPSEC">OPSEC</option>
+            <option value="SecurityCTF">Security CTF</option>
+            <option value="privacytoolsIO">Privacy Tools</option>
+            <option value="hardwarehacking">Hardware Hacking</option>
+            <option value="Malwarebytes">Malware Bytes</option>
+            <option value="antivirus">Anti Virus</option>
+                </select>
+
+        
+       <!-- Update the filter_term input to accept multiple values -->
+            <label for="filter_term">Filter Term(s):</label>
+            <input type="text" id="filter_term" name="filter" placeholder="Enter filter terms (comma-separated)">
+
+        
+
+        <label for="time_range">Time Range:</label>
+        <select id="time_range" name="time_range">
+            <option value="">All Time</option>
+            <option value="hour">Past Hour</option>
+            <option value="day">Past Day</option>
+            <option value="week">Past Week</option>
+            <option value="month">Past Month</option>
+            <option value="year">Past Year</option>
+        </select>
+        <label for="sort_method">Sort By:</label>
+<select id="sort_method" name="sort_method">
+    <option value="comments">Relevance</option>
+    <option value="comments">Number of Comments</option>
+    <option value="score">Score</option>
+    <option value="date">Date Posted</option>
+</select>
+
+        
+        <button type="submit" name="action" value="run_script" onclick="showLoading()">Start Crawling</button>
+</form>
+<div class="output-container">
+    <h2>Output:</h2>
+    <div id="loading-section" style="display: none;">
+        <div class="loading-spinner"></div>
+        <span class="loading-message">Running script. Please wait...</span>
+    </div>
+    {% if POSTS_PER_PAGE is defined %}
+    {% for entry in output_list %}
+        {{ entry }}<br>
+    {% endfor %}
+
+    {% if output_list|length > POSTS_PER_PAGE %}
+        <div class="pagination">
+            <span>Page {{ page }}:</span>
+            {% for p in range(1, (output_list|length // POSTS_PER_PAGE) + 1) %}
+                <a href="?page={{ p }}&subreddit={{ selected_subreddit }}&sort_method={{ sort_method }}&search_term={{ search_term }}&post_type={{ post_type }}&time_range={{ time_range }}">{{ p }}</a>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endif %}
+</div>
+
+<form method="post" action="/">
+    <label for="feedback">Submit Feedback:</label>
+    <textarea id="feedback" name="feedback" rows="4" cols="50" placeholder="Enter your feedback here"></textarea>
+    <button type="submit" name="action" value="submit_feedback">Submit Feedback</button>
+</form>
+
+
+    <script>
+        function showLoading() {
+            document.getElementById("loading-section").style.display = "block";
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const body = document.body;
+
+    // Check if user preference for dark mode is stored in local storage
+    const isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+
+    // Set initial dark mode state based on user preference
+    if (isDarkMode) {
+        enableDarkMode();
+    }
+
+    // Function to enable dark mode
+    function enableDarkMode() {
+        body.classList.add('dark-mode');
+        localStorage.setItem('darkMode', 'enabled');
+    }
+
+    // Function to disable dark mode
+    function disableDarkMode() {
+        body.classList.remove('dark-mode');
+        localStorage.setItem('darkMode', null);
+    }
+
+    // Function to toggle dark mode
+    window.toggleDarkMode = function () {
+        if (body.classList.contains('dark-mode')) {
+            disableDarkMode();
+        } else {
+            enableDarkMode();
+        }
+    };
+});
+    </script>
+      <script src="{{ url_for('static', filename='dark_mode.js') }}"></script>
+      <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</body>
+</html>
